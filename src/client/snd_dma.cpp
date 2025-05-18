@@ -392,6 +392,12 @@ void S_Init( void )
 			s_numChannels++;
 		}
 
+		if (alIsExtensionPresent("AL_SOFT_direct_channels") == AL_TRUE) {
+			// play stereo background music without virtualized output speakers
+			ALenum alDirectChannelsSoft = alGetEnumValue("AL_DIRECT_CHANNELS_SOFT");
+			alSourcei(s_channels[0].alSource, alDirectChannelsSoft, AL_TRUE);
+		}
+
 		// Generate AL Buffers for streaming audio playback (used for MP3s)
 		ch = s_channels + 1;
 		for (i = 1; i < s_numChannels; i++, ch++)
@@ -1758,6 +1764,20 @@ void S_AddRealLoopingSound( int entityNum, const vec3_t origin, const vec3_t vel
 //
 static qboolean LoopSound_ChannelInit(loopSound_t *pLoopSound, int iLeftVol, int iRightVol)
 {
+#ifdef USE_OPENAL
+	if (s_UseOpenAL)
+	{
+		if (numLoopChannels == s_numChannels)
+			return qfalse;
+	}
+	else
+#endif
+	{
+		if (numLoopChannels == MAX_CHANNELS) {
+			return qfalse;
+		}
+	}
+
 	// allocate a channel
 	//
 	channel_t *ch = &loop_channels[numLoopChannels];
@@ -1789,20 +1809,6 @@ static qboolean LoopSound_ChannelInit(loopSound_t *pLoopSound, int iLeftVol, int
 	}
 
 	numLoopChannels++;
-
-#ifdef USE_OPENAL
-	if (s_UseOpenAL)
-	{
-		if (numLoopChannels == s_numChannels)
-			return qfalse;
-	}
-	else
-#endif
-	{
-		if (numLoopChannels == MAX_CHANNELS) {
-			return qfalse;
-		}
-	}
 
 	return qtrue;
 }
@@ -2437,14 +2443,12 @@ void S_Update_(void) {
 				{
 					alSourcef(s_channels[source].alSource, AL_REFERENCE_DISTANCE, 768.0f);
 					alSourcef(s_channels[source].alSource, AL_MAX_DISTANCE, 2018.0f);
-                    alSourcef(s_channels[source].alSource, AL_ROLLOFF_FACTOR, 1.0f);
 					alSourcef(s_channels[source].alSource, AL_GAIN, ((float)(ch->master_vol) * s_volume->value) / 255.0f);
 				}
 				else
 				{
 					alSourcef(s_channels[source].alSource, AL_REFERENCE_DISTANCE, 256.f);
 					alSourcef(s_channels[source].alSource, AL_MAX_DISTANCE, 1506.f);
-					alSourcef(s_channels[source].alSource, AL_ROLLOFF_FACTOR, 1.0f);
 					alSourcef(s_channels[source].alSource, AL_GAIN, ((float)(ch->master_vol) * s_volume->value) / 255.f);
 				}
  			}
@@ -2754,7 +2758,6 @@ void UpdateLoopingSounds()
 	channel_t *ch;
 	loopSound_t	*loop;
 	float pos[3];
-	float fVolume = 0.003922f;	// 1.f / 255.f
 
 #ifdef DEBUG
 	// Clear AL Error State
@@ -2802,7 +2805,14 @@ void UpdateLoopingSounds()
 		}
 
 		alSourcei(s_channels[source].alSource, AL_LOOPING, AL_TRUE);
-		alSourcef(s_channels[source].alSource, AL_GAIN, (float)(ch->master_vol) * s_volume->value * fVolume);
+		alSourcef(s_channels[source].alSource, AL_GAIN, (float)(ch->master_vol) * s_volume->value / 255.0f);
+
+		if (s_bEAX) {
+			alSourcef(s_channels[source].alSource, AL_REFERENCE_DISTANCE, 400.f);
+		} else {
+			alSourcef(s_channels[source].alSource, AL_REFERENCE_DISTANCE, 256.f);
+			alSourcef(s_channels[source].alSource, AL_MAX_DISTANCE, 1506.f);
+		}
 
 		if (s_bEALFileLoaded)
 			UpdateEAXBuffer(ch);
